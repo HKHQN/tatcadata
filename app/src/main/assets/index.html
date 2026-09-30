@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bank Van Hung Bian</title>
+  <link rel="icon" type="image/png" href="favicon.png" />
+  <link rel="stylesheet" href="style.css" />
+  <!-- Firebase SDK (compat for simple vanilla JS) -->
+  <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-database-compat.js"></script>
+</head>
+<body>
+  <!-- Loading overlay -->
+  <div id="loading" class="loading-overlay">
+    <div class="spinner"></div>
+  </div>
+
+  <!-- ========== LOGIN SCREEN ========== -->
+  <div id="login-screen" class="screen hidden">
+    <div class="login-card">
+      <h1 class="title">Bank Van Hung Bian</h1>
+      <p id="login-subtitle" class="subtitle">Đăng nhập</p>
+
+      <button id="google-login" class="btn btn-google" type="button">Đăng nhập bằng Google</button>
+      <div class="auth-divider"><span>Hoặc dùng email</span></div>
+      <input id="email" type="email" placeholder="Email" autocomplete="email" />
+      <input id="password" type="password" placeholder="Mật khẩu" autocomplete="current-password" />
+
+      <button id="auth-btn" class="btn btn-primary">
+        <span id="auth-btn-text">Đăng nhập</span>
+        <span id="auth-spinner" class="spinner small hidden"></span>
+      </button>
+
+      <button id="switch-mode" class="btn-link">
+        Chưa có tài khoản? Đăng ký
+      </button>
+    </div>
+  </div>
+
+  <!-- ========== HOME SCREEN ========== -->
+  <div id="home-screen" class="screen hidden">
+    <header class="header">
+      <h2 class="header-title">Dữ liệu Realtime</h2>
+      <button id="logout-btn" class="btn-logout">Đăng xuất</button>
+    </header>
+
+    <div class="content">
+      <button id="upload-btn" class="btn btn-primary upload-btn">
+        <span id="upload-text">📤 Upload & Hợp nhất JSON</span>
+        <span id="upload-spinner" class="spinner small hidden"></span>
+      </button>
+      <input id="file-input" type="file" accept=".json,application/json" class="hidden" />
+
+      <!-- Tiến độ hợp nhất -->
+      <div id="merge-progress" class="merge-progress hidden">
+        <div class="progress-head"><span id="progress-label"></span><span id="progress-pct">0%</span></div>
+        <div class="progress-track"><div id="progress-bar" class="progress-bar"></div></div>
+        <p id="progress-detail" class="progress-detail"></p>
+      </div>
+
+      <!-- Thanh tìm kiếm -->
+      <div class="search-bar">
+        <span class="search-icon">🔍</span>
+        <input id="search-input" type="text" placeholder="Tìm kiếm theo key hoặc giá trị..." autocomplete="off" />
+        <span id="search-spinner" class="spinner small hidden"></span>
+        <button id="search-clear" class="icon-btn hidden" title="Xóa tìm kiếm" type="button">✕</button>
+        <button id="filter-toggle" class="icon-btn" title="Bộ lọc nâng cao" type="button">⚙️</button>
+      </div>
+
+      <!-- Panel bộ lọc nâng cao -->
+      <div id="filter-panel" class="filter-panel hidden">
+        <div class="filter-grid">
+          <div class="filter-row">
+            <label for="filter-target">Tìm theo</label>
+            <select id="filter-target">
+              <option value="both">Key &amp; Value</option>
+              <option value="key">Chỉ Key</option>
+              <option value="value">Chỉ Value</option>
+            </select>
+          </div>
+
+          <div class="filter-row">
+            <label for="filter-mode">Kiểu khớp</label>
+            <select id="filter-mode">
+              <option value="contains">Chứa chuỗi</option>
+              <option value="exact">Chính xác</option>
+              <option value="regex">Regex</option>
+            </select>
+          </div>
+
+          <div class="filter-row">
+            <label for="page-size">Số dòng / trang</label>
+            <select id="page-size">
+              <option value="25">25</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+            </select>
+          </div>
+
+          <div class="filter-row">
+            <label class="checkbox-label">
+              <input type="checkbox" id="filter-case" /> Phân biệt hoa/thường
+            </label>
+          </div>
+        </div>
+
+        <div class="filter-row">
+          <label>Chỉ hiện kiểu dữ liệu</label>
+          <div class="type-chips">
+            <label class="chip"><input type="checkbox" value="string" class="filter-type" /> Chuỗi</label>
+            <label class="chip"><input type="checkbox" value="number" class="filter-type" /> Số</label>
+            <label class="chip"><input type="checkbox" value="boolean" class="filter-type" /> Boolean</label>
+            <label class="chip"><input type="checkbox" value="null" class="filter-type" /> Null</label>
+          </div>
+        </div>
+
+        <div class="filter-actions">
+          <button id="filter-reset" class="btn-link" type="button">Xóa toàn bộ bộ lọc</button>
+        </div>
+      </div>
+
+      <p id="data-stats" class="data-stats hidden"></p>
+      <p id="match-info" class="match-info hidden"></p>
+      <p id="hint" class="hint">Nhấn vào mũi tên ▶ / ▼ để ẩn / hiện · Click nội dung để mở popup chi tiết / tìm trong node</p>
+
+      <div id="tree-container" class="tree-container">
+        <!-- Hiệu ứng skeleton lúc chờ dữ liệu lần đầu -->
+        <div id="skeleton" class="skeleton hidden">
+          <div class="skeleton-bar" style="width:40%"></div>
+          <div class="skeleton-bar" style="width:60%; margin-left:16px"></div>
+          <div class="skeleton-bar" style="width:50%; margin-left:32px"></div>
+          <div class="skeleton-bar" style="width:55%; margin-left:32px"></div>
+          <div class="skeleton-bar" style="width:45%; margin-left:16px"></div>
+          <div class="skeleton-bar" style="width:65%; margin-left:16px"></div>
+          <div class="skeleton-bar" style="width:35%; margin-left:32px"></div>
+        </div>
+
+        <p id="empty-msg" class="empty hidden">Chưa có dữ liệu</p>
+
+        <!-- Khung nhìn cuộn ảo hoá (virtual scroll) -->
+        <div id="tree-viewport" class="tree-viewport hidden"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== DETAIL POPUP ========== -->
+  <div id="detail-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+    <div class="modal-card">
+      <header class="modal-header">
+        <h3 id="detail-title" class="modal-title">Chi tiết node</h3>
+        <button id="detail-close" class="icon-btn modal-close" type="button" title="Đóng">✕</button>
+      </header>
+      <div class="modal-meta">
+        <span id="detail-path" class="modal-path"></span>
+        <span id="detail-type" class="modal-type-badge"></span>
+      </div>
+
+      <!-- Tìm kiếm ngay trong node -->
+      <div class="modal-search-bar">
+        <span class="search-icon">🔍</span>
+        <input id="detail-search" type="text" placeholder="Tìm trong node này (key hoặc value)…" autocomplete="off" />
+        <button id="detail-search-clear" class="icon-btn hidden" type="button" title="Xóa">✕</button>
+      </div>
+      <p id="detail-match-info" class="modal-match-info hidden"></p>
+
+      <div class="modal-body">
+        <pre id="detail-content" class="modal-content"></pre>
+        <div id="detail-matches" class="modal-matches hidden"></div>
+      </div>
+
+      <footer class="modal-footer">
+        <button id="detail-copy" class="btn btn-secondary" type="button">📋 Sao chép JSON</button>
+        <button id="detail-load-all" class="btn btn-primary modal-primary" type="button">Tải hết kết quả tìm trong node</button>
+      </footer>
+    </div>
+  </div>
+
+  <script src="treeEngine.js"></script>
+  <script src="searchEngine.js"></script>
+  <script src="mergeEngine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
